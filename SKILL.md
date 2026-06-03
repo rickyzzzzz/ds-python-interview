@@ -63,8 +63,11 @@ graded against `references/grading_rubric.md`. Scheduling follows
 
 ```bash
 # Add one or more questions from a JSON file (object or array).
-# Keys: category, difficulty, title, prompt, examples, constraints,
-#       tags, source, solution, complexity, staff_signals
+# Keys: category, difficulty, title, prompt, input_preview, expected, setup,
+#       examples, constraints, tags, source, solution, complexity, staff_signals
+#   - setup:         runnable Python that builds (and displays) the dataset
+#   - input_preview: a small static preview of the input data
+#   - expected:      the expected output, shown in the prompt
 python3 scripts/ds_python_interview_cli.py add --from-json ./new_questions.json
 # (single-question direct flags are also supported; use --update to overwrite)
 
@@ -106,15 +109,21 @@ Notes:
 The user picks a `category` and `difficulty` for the session. First make sure
 enough **grounded** questions exist: pull due ones and, if needed, generate new
 questions (grounded in `references/question_taxonomy.md`), write model
-solutions, and `add` them. Then build the notebooks.
+solutions, and `add` them. When you generate a question, always include a
+runnable **`setup`** (Python that builds and displays the dataset), an
+**`input_preview`** (small static sample of the input), and the **`expected`**
+output — so the working notebook is self-contained and the user can run cells
+and experiment with real data. Then build the notebooks.
 
 ```bash
 python3 scripts/ds_python_interview_cli.py generate-notebook \
     --category stats --difficulty hard --num 4
 ```
 
-This emits a **working** notebook with sequential questions **Q1 → QN**
-(each prompt followed by an empty answer cell) and a separate **`_KEY`**
+This emits a **working** notebook with sequential questions **Q1 → QN** — each
+question is a prompt (with an **Input data** preview and the **Expected
+output**), a **runnable setup cell** that builds the dataset so the user can
+execute it and experiment, then an empty answer cell — plus a separate **`_KEY`**
 notebook containing model solutions plus complexity / staff-signal notes:
 
 ```
@@ -189,9 +198,10 @@ interview_bank/
   _index.json   # canonical question store + spaced-repetition state
 ```
 
-- **Working notebook** — intro cell, then for each question a markdown prompt
-  (`## Q{n} — Title`, examples, constraints, tags) followed by an empty answer
-  cell. No solutions.
+- **Working notebook** — intro cell, a shared imports cell, then for each
+  question: a markdown prompt (`## Q{n} — Title`, **Input data**, **Expected
+  output**, constraints, tags), a **runnable setup cell** that builds (and
+  displays) the question's dataset, and an empty answer cell. No solutions.
 - **KEY notebook** — same prompts, but each answer cell holds the model
   solution, followed by a notes cell with **complexity** and **staff signals**.
 - **Review report** — `Reviews/review_<date>.md`, one section per question:
@@ -215,6 +225,10 @@ interview_bank/
   store; `add` it.
 - **Ground every generated question** in `references/question_taxonomy.md` so
   difficulty and surface area stay realistic.
+- **Make notebooks runnable.** Every generated question ships a `setup` cell
+  that builds (and displays) its dataset, plus an `input_preview` and `expected`
+  output in the prompt — the user should be able to run cells and experiment
+  without writing boilerplate.
 - **Always produce a separate KEY** so review is grounded in a reference answer.
 - **Grade honestly.** Map review outcomes to `{again, hard, good, easy}` per
   `references/grading_rubric.md`; an honest grade is what makes spaced

@@ -66,6 +66,27 @@ SAMPLE_QUESTIONS = [
 ]
 
 
+SETUP_QUESTION = {
+    "category": "pandas",
+    "difficulty": "easy",
+    "title": "Sum Amounts",
+    "prompt": "Return the total amount.",
+    "input_preview": "orders:\n    amount\n    10\n    20",
+    "expected": "30",
+    "setup": "orders = pd.DataFrame({'amount': [10, 20]})\norders",
+    "constraints": "Vectorize; no Python loops.",
+    "tags": ["groupby", "sum"],
+    "source": "generated",
+    "solution": "total = orders['amount'].sum()",
+    "complexity": "O(n)",
+    "staff_signals": "Vectorized sum.",
+}
+
+
+def _role(cell: dict) -> str | None:
+    return ((cell.get("metadata") or {}).get("ds_interview") or {}).get("role")
+
+
 def run_cli(argv: list[str]) -> str:
     """Run the CLI and capture stdout; assert success exit code."""
     buf = io.StringIO()
@@ -212,6 +233,61 @@ class TestCli(unittest.TestCase):
         self.assertIn("dsa: 1", out)
         self.assertIn("pandas: 1", out)
         self.assertIn("stats: 1", out)
+
+    def test_setup_cells_and_roundtrip(self) -> None:
+        # A question that ships a runnable setup + input preview + expected output.
+        qpath = Path(self._tmp.name) / "setupq.json"
+        qpath.write_text(json.dumps([SETUP_QUESTION]), encoding="utf-8")
+        run_cli(["add", *self._bank("--from-json", str(qpath), "--date", "2026-01-01")])
+
+        # Bank note round-trips the new fields.
+        note = next((self.bank_dir / "Bank").glob("*.md"))
+        content = cli.read_bank_note(note)
+        self.assertIn("pd.DataFrame", content["setup"])
+        self.assertEqual(content["expected"], "30")
+        self.assertIn("orders:", content["input_preview"])
+
+        run_cli(["generate-notebook",
+                 *self._bank("--num", "1", "--date", "2026-01-03")])
+        working = self.bank_dir / "Notebooks" / "drill_2026-01-03.ipynb"
+        nb = json.loads(working.read_text())
+
+        roles = [_role(c) for c in nb["cells"] if c["cell_type"] == "code"]
+        self.assertIn("imports", roles)   # pandas import derived from setup
+        self.assertIn("setup", roles)
+        self.assertIn("answer", roles)
+
+        setup_cell = next(c for c in nb["cells"] if _role(c) == "setup")
+        self.assertIn("pd.DataFrame", "".join(setup_cell["source"]))
+
+        answer_cell = next(c for c in nb["cells"] if _role(c) == "answer")
+        answer_src = "".join(answer_cell["source"])
+        self.assertIn("# Your answer", answer_src)
+        self.assertNotIn("sum()", answer_src)  # no solution leakage
+
+        markdown = "\n".join(
+            "".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "markdown"
+        )
+        self.assertIn("Input data", markdown)
+        self.assertIn("Expected output", markdown)
+
+        # parse-notebook must return the ANSWER cell, not the setup cell.
+        for c in nb["cells"]:
+            if _role(c) == "answer":
+                c["source"] = ["my_answer = 42\n"]
+        done = self.bank_dir / "Notebooks" / "drill_2026-01-03_done.ipynb"
+        done.write_text(json.dumps(nb), encoding="utf-8")
+        parsed = json.loads(
+            run_cli(["parse-notebook", *self._bank("--notebook", str(done))])
+        )
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0]["answer_code"], "my_answer = 42\n")
+
+        # KEY notebook carries the solution in its answer cell.
+        key = self.bank_dir / "Notebooks" / "drill_2026-01-03_KEY.ipynb"
+        key_nb = json.loads(key.read_text())
+        key_answer = next(c for c in key_nb["cells"] if _role(c) == "answer")
+        self.assertIn("sum()", "".join(key_answer["source"]))
 
     def test_bank_dir_env_override(self) -> None:
         # Flag should win over env; env should win over default.

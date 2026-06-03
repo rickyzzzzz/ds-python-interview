@@ -27,8 +27,10 @@ Questions span three categories:
 ## What it does (five workflows)
 
 1. **Generate a notebook** — pick a category + difficulty; get a working
-   notebook with sequential questions **Q1 → QN** (each prompt followed by an
-   empty answer cell) plus a separate `_KEY` notebook with model solutions.
+   notebook with sequential questions **Q1 → QN**. Each question shows the
+   **input data** and **expected output**, ships a **runnable setup cell** that
+   builds the dataset (so you can run cells and experiment), and gives you an
+   empty answer cell. A separate `_KEY` notebook holds the model solutions.
 2. **Solve** — work through the questions in JupyterLab / VS Code.
 3. **Review** — Claude reads your completed notebook, grades each answer against
    the key, writes a feedback report, and updates the schedule.

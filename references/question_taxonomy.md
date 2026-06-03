@@ -137,3 +137,32 @@ Generic, no attribution. Use these as calibration, not as a fixed list.
 When generating a set, mirror this: open with a warm-up, build to the core
 skill, then push into edge cases / optimization, and (for senior practice) a
 stretch question that forces stating assumptions and trade-offs.
+
+---
+
+## Make Every Question Runnable
+
+So the working notebook is self-contained and the interviewee can actually run
+cells and play with the data, every generated question must include:
+
+- **`setup`** — runnable Python that constructs the input data and displays it.
+  Keep the dataset small and illustrative (a handful of rows), assume `pandas as
+  pd` / `numpy as np` are imported (the notebook adds a shared imports cell), and
+  end the cell with the input variable so running it previews the data, e.g.:
+
+  ```python
+  orders = pd.DataFrame({
+      "customer_id": [1, 1, 2, 3, 3],
+      "amount": [10.0, 30.0, 50.0, 5.0, 15.0],
+  })
+  orders
+  ```
+
+- **`input_preview`** — a short static rendering of the input (so the question
+  reads clearly without running anything).
+- **`expected`** — the expected output for that input, shown in the prompt.
+
+For `dsa` questions the `setup` typically defines plain Python inputs (a list,
+string, or dict); for `pandas` it builds the DataFrame(s); for `stats` it builds
+the sample arrays / frames. The dataset in `setup` should match `input_preview`
+and produce the `expected` output, so the example is internally consistent.

@@ -2,6 +2,19 @@
 
 A ``.ipynb`` file is just JSON, so this module constructs and reads the notebook
 dicts directly. No third-party packages (nbformat, etc.) are required.
+
+Each generated question contributes up to three cells:
+
+1. a markdown prompt cell (`## Q{n} — Title`, including an **Input data** preview
+   and the **Expected output**),
+2. a runnable **setup** code cell that constructs the dataset for the question so
+   the user can execute it and experiment with real data, and
+3. an **answer** code cell (empty in the WORKING notebook, the model solution in
+   the KEY notebook).
+
+Code cells are tagged in their metadata (``metadata.ds_interview.role``) so a
+completed notebook can be parsed back to the user's answers unambiguously, even
+though setup cells are also code.
 """
 
 from __future__ import annotations
@@ -41,11 +54,23 @@ def _markdown_cell(text: str) -> dict[str, Any]:
     }
 
 
-def _code_cell(text: str) -> dict[str, Any]:
+def _code_cell(text: str, role: str | None = None, qnum: int | None = None) -> dict[str, Any]:
+    """Build a code cell, optionally tagged with a ``ds_interview`` role.
+
+    ``role`` is one of ``"imports"``, ``"setup"``, or ``"answer"``. The role (and
+    question number) live in ``metadata`` so ``parse_notebook`` can reliably
+    distinguish the user's answer cell from setup/imports cells.
+    """
+    metadata: dict[str, Any] = {}
+    if role is not None:
+        tag: dict[str, Any] = {"role": role}
+        if qnum is not None:
+            tag["qnum"] = qnum
+        metadata["ds_interview"] = tag
     return {
         "cell_type": "code",
         "id": _new_id(),
-        "metadata": {},
+        "metadata": metadata,
         "execution_count": None,
         "outputs": [],
         "source": _as_source_lines(text),
@@ -62,11 +87,34 @@ def _question_markdown(index: int, question: dict[str, Any]) -> str:
         parts.append(prompt)
         parts.append("")
 
+    input_preview = (question.get("input_preview") or "").strip()
+    if input_preview:
+        parts.append("**Input data**")
+        parts.append("")
+        parts.append(input_preview)
+        parts.append("")
+
+    expected = (question.get("expected") or "").strip()
+    if expected:
+        parts.append("**Expected output**")
+        parts.append("")
+        parts.append(expected)
+        parts.append("")
+
+    # Legacy combined examples block (kept for backward compatibility).
     examples = (question.get("examples") or "").strip()
     if examples:
         parts.append("**Examples**")
         parts.append("")
         parts.append(examples)
+        parts.append("")
+
+    setup = (question.get("setup") or "").strip()
+    if setup:
+        parts.append(
+            "_Run the **setup** cell below to build and preview the data, "
+            "then write your answer in the next cell._"
+        )
         parts.append("")
 
     constraints = (question.get("constraints") or "").strip()
@@ -94,6 +142,17 @@ def _key_notes_markdown(question: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _imports_for(questions: list[dict[str, Any]]) -> str:
+    """Derive a shared imports cell from what the setup code actually uses."""
+    blob = "\n".join((q.get("setup") or "") for q in questions)
+    lines: list[str] = []
+    if "pd." in blob or "pandas" in blob:
+        lines.append("import pandas as pd")
+    if "np." in blob or "numpy" in blob:
+        lines.append("import numpy as np")
+    return "\n".join(lines)
+
+
 def build_notebook(
     title: str,
     intro_md: str,
@@ -102,10 +161,11 @@ def build_notebook(
 ) -> dict[str, Any]:
     """Build an nbformat v4 notebook dict.
 
-    When ``include_solutions`` is False a WORKING notebook is produced: each
-    question gets a placeholder code cell for the user to fill in. When True a
-    KEY notebook is produced: code cells carry the model solution and a trailing
-    markdown cell holds complexity / staff-signal notes.
+    The notebook opens with an intro cell and, if any question ships a ``setup``,
+    a shared imports cell. Each question then contributes a markdown prompt, an
+    optional runnable setup cell, and an answer cell. When ``include_solutions``
+    is False a WORKING notebook is produced (empty answer cells); when True a KEY
+    notebook is produced (model solutions plus complexity / staff-signal notes).
     """
     cells: list[dict[str, Any]] = []
 
@@ -115,16 +175,27 @@ def build_notebook(
         intro_text = f"{intro_text}\n\n{extra}"
     cells.append(_markdown_cell(intro_text))
 
+    imports = _imports_for(questions)
+    if imports:
+        cells.append(_code_cell(imports + "\n", role="imports"))
+
     for i, question in enumerate(questions, start=1):
         cells.append(_markdown_cell(_question_markdown(i, question)))
+
+        setup = (question.get("setup") or "").strip()
+        if setup:
+            if not setup.endswith("\n"):
+                setup = setup + "\n"
+            cells.append(_code_cell(setup, role="setup", qnum=i))
+
         if include_solutions:
             solution = question.get("solution") or ""
             if not solution.endswith("\n"):
                 solution = solution + "\n"
-            cells.append(_code_cell(solution))
+            cells.append(_code_cell(solution, role="answer", qnum=i))
             cells.append(_markdown_cell(_key_notes_markdown(question)))
         else:
-            cells.append(_code_cell(f"# Your answer for Q{i}\n"))
+            cells.append(_code_cell(f"# Your answer for Q{i}\n", role="answer", qnum=i))
 
     return {
         "cells": cells,
@@ -170,9 +241,11 @@ def _cell_source_text(cell: dict[str, Any]) -> str:
 def parse_notebook(path) -> list[dict[str, Any]]:
     """Parse a (possibly user-completed) notebook into question answers.
 
-    Walks the cells in order. Whenever a markdown cell starts with
-    ``## Q{n} —`` the following code cell's joined source is captured as that
-    question's ``answer_code``.
+    Walks the cells in order. Markdown ``## Q{n} —`` headers establish the
+    current question. The user's answer is taken from the code cell whose
+    metadata role is ``"answer"``; ``"imports"`` and ``"setup"`` code cells are
+    skipped. For older notebooks without role metadata, the first code cell after
+    a question header is used as a fallback.
     """
     path = Path(path)
     with path.open("r", encoding="utf-8") as fh:
@@ -180,6 +253,7 @@ def parse_notebook(path) -> list[dict[str, Any]]:
 
     results: list[dict[str, Any]] = []
     pending: dict[str, Any] | None = None
+    answered: set[int] = set()
 
     for cell in nb.get("cells", []):
         cell_type = cell.get("cell_type")
@@ -195,7 +269,25 @@ def parse_notebook(path) -> list[dict[str, Any]]:
                 }
             # Non-question markdown (intro, KEY notes) is ignored.
         elif cell_type == "code":
-            if pending is not None:
+            tag = (cell.get("metadata") or {}).get("ds_interview") or {}
+            role = tag.get("role")
+
+            if role in ("imports", "setup"):
+                continue
+
+            if role == "answer":
+                qnum = tag.get("qnum")
+                title = pending["title"] if pending else ""
+                if qnum is None and pending is not None:
+                    qnum = pending["qnum"]
+                results.append({"qnum": qnum, "title": title, "answer_code": text})
+                if qnum is not None:
+                    answered.add(qnum)
+                pending = None
+                continue
+
+            # Legacy fallback: untagged code cell right after a question header.
+            if pending is not None and pending["qnum"] not in answered:
                 results.append(
                     {
                         "qnum": pending["qnum"],
@@ -203,6 +295,7 @@ def parse_notebook(path) -> list[dict[str, Any]]:
                         "answer_code": text,
                     }
                 )
+                answered.add(pending["qnum"])
                 pending = None
 
     return results

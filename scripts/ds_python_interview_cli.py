@@ -203,6 +203,29 @@ def render_bank_note(question: dict[str, Any]) -> str:
         body.append(prompt)
         body.append("")
 
+    input_preview = (question.get("input_preview") or "").strip()
+    if input_preview:
+        body.append("## Input data")
+        body.append("")
+        body.append(input_preview)
+        body.append("")
+
+    expected = (question.get("expected") or "").strip()
+    if expected:
+        body.append("## Expected output")
+        body.append("")
+        body.append(expected)
+        body.append("")
+
+    setup = (question.get("setup") or "").strip()
+    if setup:
+        body.append("## Setup")
+        body.append("")
+        body.append("```python")
+        body.extend(setup.splitlines())
+        body.append("```")
+        body.append("")
+
     examples = (question.get("examples") or "").strip()
     if examples:
         body.append("## Examples")
@@ -245,7 +268,8 @@ def read_bank_note(path: Path) -> dict[str, Any]:
     lines = text.splitlines()
 
     result: dict[str, Any] = {
-        "prompt": "", "examples": "", "constraints": "",
+        "prompt": "", "input_preview": "", "expected": "", "setup": "",
+        "examples": "", "constraints": "",
         "solution": "", "complexity": "", "staff_signals": "",
     }
 
@@ -286,7 +310,15 @@ def read_bank_note(path: Path) -> dict[str, Any]:
     def _section_text(name: str) -> str:
         return "\n".join(sections.get(name, [])).strip()
 
+    def _section_code(name: str) -> str:
+        """Section text with surrounding ```python ... ``` fences stripped."""
+        kept = [ln for ln in sections.get(name, []) if not ln.strip().startswith("```")]
+        return "\n".join(kept).strip()
+
     result["prompt"] = _section_text("prompt")
+    result["input_preview"] = _section_text("input data")
+    result["expected"] = _section_text("expected output")
+    result["setup"] = _section_code("setup")
     result["examples"] = _section_text("examples")
     result["constraints"] = _section_text("constraints")
     result["solution"] = "\n".join(solution_lines).strip()
@@ -322,6 +354,9 @@ def _build_question_record(raw: dict[str, Any], today: str) -> dict[str, Any]:
         "slug": slug,
         "created": today,
         "prompt": raw.get("prompt") or "",
+        "input_preview": raw.get("input_preview") or "",
+        "expected": raw.get("expected") or "",
+        "setup": raw.get("setup") or "",
         "examples": raw.get("examples") or "",
         "constraints": raw.get("constraints") or "",
         "solution": raw.get("solution") or "",
@@ -368,6 +403,9 @@ def cmd_add(args: argparse.Namespace) -> int:
             "difficulty": args.difficulty,
             "title": args.title,
             "prompt": args.prompt,
+            "input_preview": args.input_preview,
+            "expected": args.expected,
+            "setup": args.setup,
             "examples": args.examples,
             "constraints": args.constraints,
             "tags": args.tags,
@@ -508,6 +546,9 @@ def cmd_generate_notebook(args: argparse.Namespace) -> int:
             "title": entry["title"],
             "tags": entry.get("tags", []),
             "prompt": content.get("prompt", ""),
+            "input_preview": content.get("input_preview", ""),
+            "expected": content.get("expected", ""),
+            "setup": content.get("setup", ""),
             "examples": content.get("examples", ""),
             "constraints": content.get("constraints", ""),
             "solution": content.get("solution", ""),
@@ -690,6 +731,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--difficulty")
     p_add.add_argument("--title")
     p_add.add_argument("--prompt", default="")
+    p_add.add_argument("--input-preview", dest="input_preview", default="")
+    p_add.add_argument("--expected", default="")
+    p_add.add_argument("--setup", default="")
     p_add.add_argument("--examples", default="")
     p_add.add_argument("--constraints", default="")
     p_add.add_argument("--tags", default="")
