@@ -166,3 +166,25 @@ For `dsa` questions the `setup` typically defines plain Python inputs (a list,
 string, or dict); for `pandas` it builds the DataFrame(s); for `stats` it builds
 the sample arrays / frames. The dataset in `setup` should match `input_preview`
 and produce the `expected` output, so the example is internally consistent.
+
+---
+
+## Follow-up Kinds
+
+After a question is solved, a follow-up deepens it along one axis. Ask the user
+which axis they want, then generate a new question (with its own
+`setup`/`input_preview`/`expected`/`solution`) seeded by the parent. The common
+kinds — interviewers reuse almost all of these:
+
+| Kind | The prompt twist | Probes |
+|---|---|---|
+| **Scale / performance** | "Now it's 100M rows and won't fit in memory." | chunking, dtypes/`category`, push to SQL/Spark, approximate algorithms |
+| **Edge cases & robustness** | "Handle NaN / ties / empty / duplicate or unmatched keys." | deliberate missing-data and boundary handling, `validate=` on joins |
+| **SQL translation** | "Write the same logic as a SQL query." | `GROUP BY`, `JOIN`, window functions, `COUNT(DISTINCT …)` |
+| **Harder variant** | The next difficulty tier of the same skill. | `transform` vs `agg`, `merge_asof`, ratio metrics, top-k heap, 2-D DP |
+| **Stats bridge** | "Is that difference significant? How would you size the test?" | hypothesis test choice + assumptions, power/MDE, CUPED, delta method |
+| **Python internals** | "Why is this fast/slow? What does it copy?" | view vs copy, generators, hashing, complexity, GIL |
+
+The general shape: a follow-up makes the original **faster, bigger, break, real
+(SQL/prod), or rigorous (stats)**. Tag follow-ups with a `followup` tag and set
+the question's `parent` to the source question's id so the lineage is queryable.

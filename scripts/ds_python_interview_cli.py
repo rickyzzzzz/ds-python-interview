@@ -189,6 +189,8 @@ def render_bank_note(question: dict[str, Any]) -> str:
                 f"difficulty: {question['difficulty']}"]
     fm_lines.append("tags: [" + ", ".join(tags) + "]")
     fm_lines.append(f"source: {question.get('source', '') or ''}")
+    if question.get("parent"):
+        fm_lines.append(f"parent: {question['parent']}")
     fm_lines.append(f"created: {question['created']}")
     fm_lines.append("---")
 
@@ -351,6 +353,7 @@ def _build_question_record(raw: dict[str, Any], today: str) -> dict[str, Any]:
         "title": title,
         "tags": tags,
         "source": raw.get("source") or "",
+        "parent": raw.get("parent") or "",
         "slug": slug,
         "created": today,
         "prompt": raw.get("prompt") or "",
@@ -373,6 +376,7 @@ def _index_entry_from_record(record: dict[str, Any], note_path: str) -> dict[str
         "title": record["title"],
         "tags": list(record["tags"]),
         "source": record["source"],
+        "parent": record.get("parent", ""),
         "slug": record["slug"],
         "created": record["created"],
         "note_path": note_path,
@@ -410,6 +414,7 @@ def cmd_add(args: argparse.Namespace) -> int:
             "constraints": args.constraints,
             "tags": args.tags,
             "source": args.source,
+            "parent": args.parent,
             "solution": args.solution,
             "complexity": args.complexity,
             "staff_signals": args.staff_signals,
@@ -508,6 +513,26 @@ def _select_for_notebook(
     return ordered[:num]
 
 
+def _question_dict_from_entry(bank_dir: Path, entry: dict[str, Any]) -> dict[str, Any]:
+    """Merge index metadata with full content recovered from the bank note."""
+    note_path = bank_dir / entry["note_path"]
+    content = read_bank_note(note_path) if note_path.exists() else {}
+    return {
+        "id": entry["id"],
+        "title": entry["title"],
+        "tags": entry.get("tags", []),
+        "prompt": content.get("prompt", ""),
+        "input_preview": content.get("input_preview", ""),
+        "expected": content.get("expected", ""),
+        "setup": content.get("setup", ""),
+        "examples": content.get("examples", ""),
+        "constraints": content.get("constraints", ""),
+        "solution": content.get("solution", ""),
+        "complexity": content.get("complexity", ""),
+        "staff_signals": content.get("staff_signals", ""),
+    }
+
+
 def cmd_generate_notebook(args: argparse.Namespace) -> int:
     bank_dir = resolve_bank_dir(args.bank_dir)
     date = today_iso(args.date)
@@ -537,24 +562,7 @@ def cmd_generate_notebook(args: argparse.Namespace) -> int:
 
     # Merge index metadata (title/tags) with full content recovered from the
     # bank note (prompt/examples/constraints/solution/notes).
-    question_dicts: list[dict[str, Any]] = []
-    for entry in selected:
-        note_path = bank_dir / entry["note_path"]
-        content = read_bank_note(note_path) if note_path.exists() else {}
-        question_dicts.append({
-            "id": entry["id"],
-            "title": entry["title"],
-            "tags": entry.get("tags", []),
-            "prompt": content.get("prompt", ""),
-            "input_preview": content.get("input_preview", ""),
-            "expected": content.get("expected", ""),
-            "setup": content.get("setup", ""),
-            "examples": content.get("examples", ""),
-            "constraints": content.get("constraints", ""),
-            "solution": content.get("solution", ""),
-            "complexity": content.get("complexity", ""),
-            "staff_signals": content.get("staff_signals", ""),
-        })
+    question_dicts = [_question_dict_from_entry(bank_dir, entry) for entry in selected]
 
     working_nb = notebook_builder.build_notebook(
         title, intro, question_dicts, include_solutions=False
@@ -583,6 +591,63 @@ def cmd_generate_notebook(args: argparse.Namespace) -> int:
     print("Selected questions:")
     for i, entry in enumerate(selected, start=1):
         print(f"  Q{i}: {entry['id']} — {entry['title']}")
+    return 0
+
+
+def cmd_append_notebook(args: argparse.Namespace) -> int:
+    """Append already-banked questions (e.g. follow-ups) to an existing notebook."""
+    bank_dir = resolve_bank_dir(args.bank_dir)
+    index = load_index(bank_dir)
+
+    working_path = Path(args.notebook).expanduser()
+    if not working_path.exists():
+        print(f"error: notebook not found: {working_path}", file=sys.stderr)
+        return 1
+
+    ids = [s.strip() for s in (args.ids or "").split(",") if s.strip()]
+    if not ids:
+        print("error: --ids is required (comma-separated question ids to append)",
+              file=sys.stderr)
+        return 2
+
+    selected: list[dict[str, Any]] = []
+    for qid in ids:
+        if qid not in index["questions"]:
+            print(f"error: unknown question id: {qid}", file=sys.stderr)
+            return 1
+        selected.append(index["questions"][qid])
+
+    question_dicts = [_question_dict_from_entry(bank_dir, entry) for entry in selected]
+
+    # Number the new questions one past the current maximum, and keep the WORKING
+    # and KEY notebooks in lockstep by sharing that starting index.
+    working_nb = notebook_builder.read_notebook(working_path)
+    start_index = notebook_builder.max_question_number(working_nb) + 1
+    notebook_builder.append_questions(
+        working_nb, question_dicts, include_solutions=False, start_index=start_index
+    )
+    notebook_builder.write_notebook(working_nb, working_path)
+
+    key_path = working_path.with_name(f"{working_path.stem}_KEY{working_path.suffix}")
+    if key_path.exists():
+        key_nb = notebook_builder.read_notebook(key_path)
+        notebook_builder.append_questions(
+            key_nb, question_dicts, include_solutions=True, start_index=start_index
+        )
+        notebook_builder.write_notebook(key_nb, key_path)
+
+    for entry in selected:
+        nbs = entry.setdefault("notebooks", [])
+        if working_path.name not in nbs:
+            nbs.append(working_path.name)
+    save_index(bank_dir, index)
+
+    print(working_path)
+    if key_path.exists():
+        print(key_path)
+    print(f"Appended {len(selected)} question(s) starting at Q{start_index}:")
+    for offset, entry in enumerate(selected):
+        print(f"  Q{start_index + offset}: {entry['id']} — {entry['title']}")
     return 0
 
 
@@ -738,6 +803,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--constraints", default="")
     p_add.add_argument("--tags", default="")
     p_add.add_argument("--source", default="")
+    p_add.add_argument("--parent", default="", help="Parent question id (for follow-ups).")
     p_add.add_argument("--solution", default="")
     p_add.add_argument("--complexity", default="")
     p_add.add_argument("--staff-signals", dest="staff_signals", default="")
@@ -753,6 +819,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument("--title")
     p_gen.add_argument("--date", help="Notebook date (YYYY-MM-DD), default today.")
     p_gen.set_defaults(func=cmd_generate_notebook)
+
+    # append-notebook
+    p_app = sub.add_parser(
+        "append-notebook",
+        help="Append banked questions (e.g. follow-ups) to an existing notebook.",
+    )
+    _add_bank_dir_flag(p_app)
+    p_app.add_argument("--notebook", required=True,
+                       help="Path to the WORKING .ipynb to append to (KEY updated too).")
+    p_app.add_argument("--ids", required=True,
+                       help="Comma-separated question ids to append, in order.")
+    p_app.set_defaults(func=cmd_append_notebook)
 
     # due
     p_due = sub.add_parser("due", help="List questions due for review.")

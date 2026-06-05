@@ -153,6 +153,30 @@ def _imports_for(questions: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _question_cells(
+    index: int, question: dict[str, Any], include_solutions: bool
+) -> list[dict[str, Any]]:
+    """Build the cells for a single question: prompt, optional setup, answer."""
+    cells: list[dict[str, Any]] = [_markdown_cell(_question_markdown(index, question))]
+
+    setup = (question.get("setup") or "").strip()
+    if setup:
+        if not setup.endswith("\n"):
+            setup = setup + "\n"
+        cells.append(_code_cell(setup, role="setup", qnum=index))
+
+    if include_solutions:
+        solution = question.get("solution") or ""
+        if not solution.endswith("\n"):
+            solution = solution + "\n"
+        cells.append(_code_cell(solution, role="answer", qnum=index))
+        cells.append(_markdown_cell(_key_notes_markdown(question)))
+    else:
+        cells.append(_code_cell(f"# Your answer for Q{index}\n", role="answer", qnum=index))
+
+    return cells
+
+
 def build_notebook(
     title: str,
     intro_md: str,
@@ -180,22 +204,7 @@ def build_notebook(
         cells.append(_code_cell(imports + "\n", role="imports"))
 
     for i, question in enumerate(questions, start=1):
-        cells.append(_markdown_cell(_question_markdown(i, question)))
-
-        setup = (question.get("setup") or "").strip()
-        if setup:
-            if not setup.endswith("\n"):
-                setup = setup + "\n"
-            cells.append(_code_cell(setup, role="setup", qnum=i))
-
-        if include_solutions:
-            solution = question.get("solution") or ""
-            if not solution.endswith("\n"):
-                solution = solution + "\n"
-            cells.append(_code_cell(solution, role="answer", qnum=i))
-            cells.append(_markdown_cell(_key_notes_markdown(question)))
-        else:
-            cells.append(_code_cell(f"# Your answer for Q{i}\n", role="answer", qnum=i))
+        cells.extend(_question_cells(i, question, include_solutions))
 
     return {
         "cells": cells,
@@ -228,7 +237,68 @@ def write_notebook(nb: dict[str, Any], path) -> None:
         raise
 
 
+def read_notebook(path) -> dict[str, Any]:
+    """Load a notebook JSON file into a dict."""
+    with Path(path).open("r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 _Q_HEADER_RE = re.compile(r"^##\s*Q(\d+)\s*—\s*(.*?)\s*$")
+
+
+def max_question_number(nb: dict[str, Any]) -> int:
+    """Return the highest ``## Q{n}`` number present in the notebook (0 if none)."""
+    highest = 0
+    for cell in nb.get("cells", []):
+        if cell.get("cell_type") != "markdown":
+            continue
+        text = _cell_source_text(cell)
+        first_line = text.splitlines()[0] if text else ""
+        match = _Q_HEADER_RE.match(first_line.strip())
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return highest
+
+
+def ensure_imports(nb: dict[str, Any], questions: list[dict[str, Any]]) -> None:
+    """Insert any imports the new questions need that the notebook lacks.
+
+    Appended questions may introduce pandas/numpy where the original notebook had
+    none. A new imports cell is inserted just after the intro cell so the added
+    setup cells run.
+    """
+    needed = _imports_for(questions)
+    if not needed:
+        return
+    existing = "\n".join(
+        _cell_source_text(c) for c in nb.get("cells", []) if c.get("cell_type") == "code"
+    )
+    missing = [line for line in needed.splitlines() if line and line not in existing]
+    if not missing:
+        return
+    cells = nb.setdefault("cells", [])
+    insert_at = 1 if cells and cells[0].get("cell_type") == "markdown" else 0
+    cells.insert(insert_at, _code_cell("\n".join(missing) + "\n", role="imports"))
+
+
+def append_questions(
+    nb: dict[str, Any],
+    questions: list[dict[str, Any]],
+    include_solutions: bool,
+    start_index: int | None = None,
+) -> dict[str, Any]:
+    """Append new questions to an existing notebook dict, continuing numbering.
+
+    ``start_index`` defaults to one past the current highest question number.
+    Pass it explicitly to keep a WORKING and KEY notebook numbered in lockstep.
+    """
+    ensure_imports(nb, questions)
+    if start_index is None:
+        start_index = max_question_number(nb) + 1
+    cells = nb.setdefault("cells", [])
+    for offset, question in enumerate(questions):
+        cells.extend(_question_cells(start_index + offset, question, include_solutions))
+    return nb
 
 
 def _cell_source_text(cell: dict[str, Any]) -> str:

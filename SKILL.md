@@ -1,6 +1,6 @@
 ---
 name: ds-python-interview
-description: Practice and drill Python data-science interview questions in Jupyter notebooks with spaced repetition. A stdlib-only CLI handles the bookkeeping (question bank, notebook generation, scheduling); Claude does the reasoning (writing questions, parsing screenshots, reviewing completed notebooks). Use when the user wants to practice/drill Python DS interview questions, generate a practice notebook, review a completed notebook, add an interview question from text or a screenshot, expand a leaked/partial question into a full easy-to-hard set, check what's due to review, or see their progress/stats. Covers three categories — pure-Python DSA, pandas/numpy data manipulation, and statistics/experimentation (CUPED, delta method, IPTW, bootstrap, power/MDE). ML-from-scratch is intentionally out of scope.
+description: Practice and drill Python data-science interview questions in Jupyter notebooks with spaced repetition. A stdlib-only CLI handles the bookkeeping (question bank, notebook generation, scheduling); Claude does the reasoning (writing questions, parsing screenshots, reviewing completed notebooks). Use when the user wants to practice/drill Python DS interview questions, generate a practice notebook, review a completed notebook, add an interview question from text or a screenshot, expand a leaked/partial question into a full easy-to-hard set, add targeted follow-up questions to an existing drill notebook, check what's due to review, or see their progress/stats. Covers three categories — pure-Python DSA, pandas/numpy data manipulation, and statistics/experimentation (CUPED, delta method, IPTW, bootstrap, power/MDE). ML-from-scratch is intentionally out of scope.
 ---
 
 # DS Python Interview Trainer
@@ -29,6 +29,8 @@ Trigger this skill when the user wants to:
 - **Review a completed notebook** ("review my notebook", "grade my answers").
 - **Add a question** from pasted text or a **screenshot** image.
 - **Expand a leaked / partial question** into a full easy → hard progression.
+- **Add follow-up questions** to an existing notebook ("give me follow-ups",
+  "go deeper on Q2", "harder variants").
 - See **what's due** for review, or view **stats / progress**.
 
 ## Prerequisites
@@ -64,7 +66,8 @@ graded against `references/grading_rubric.md`. Scheduling follows
 ```bash
 # Add one or more questions from a JSON file (object or array).
 # Keys: category, difficulty, title, prompt, input_preview, expected, setup,
-#       examples, constraints, tags, source, solution, complexity, staff_signals
+#       examples, constraints, tags, source, parent, solution, complexity, staff_signals
+#   - parent:        id of the question this is a follow-up of (optional)
 #   - setup:         runnable Python that builds (and displays) the dataset
 #   - input_preview: a small static preview of the input data
 #   - expected:      the expected output, shown in the prompt
@@ -74,6 +77,12 @@ python3 scripts/ds_python_interview_cli.py add --from-json ./new_questions.json
 # Build the WORKING + KEY notebooks for a session (due questions first, then fresh).
 python3 scripts/ds_python_interview_cli.py generate-notebook \
     --category pandas --difficulty medium --num 5
+
+# Append already-banked questions (e.g. follow-ups) to an existing notebook,
+# continuing the numbering (Q4, Q5, ...) in both the WORKING and KEY copies.
+python3 scripts/ds_python_interview_cli.py append-notebook \
+    --notebook ./interview_bank/Notebooks/drill_2026-01-15.ipynb \
+    --ids q_pandas_avg-order-value-scale,q_pandas_avg-order-value-sql
 
 # List questions due for review (optionally filtered).
 python3 scripts/ds_python_interview_cli.py due --category dsa --limit 10
@@ -185,6 +194,40 @@ python3 scripts/ds_python_interview_cli.py generate-notebook \
     --category pandas --difficulty medium --num 5 \
     --ids q_pandas_warmup q_pandas_core q_pandas_edges q_pandas_stretch
 ```
+
+### 6. Add follow-up questions
+
+After the user has solved (and ideally reviewed) a notebook, they may want to go
+deeper on a question. **First ask what kind of follow-up they want — don't
+guess.** Offer the angles catalogued in `references/question_taxonomy.md`:
+
+- **Scale / performance** — "what if it's 100M rows / out of memory?"
+- **Edge cases & robustness** — NaN, ties, empties, bad joins.
+- **SQL translation** — the same logic as a query.
+- **Harder variant** — the next difficulty tier (`transform`, `merge_asof`, a ratio metric…).
+- **Stats bridge** — "is the difference significant?", power / MDE, CUPED.
+- **Python internals** — copies vs views, generators, complexity.
+
+Also ask **which question(s)** to follow up on. Then, for each follow-up:
+
+1. Generate it grounded in the chosen angle **and** the parent question; write a
+   runnable `setup`, `input_preview`, `expected`, and `solution`.
+2. `add` it with `--parent <parent-id>` (and a `followup` tag) so it traces back.
+3. `append-notebook` it onto the user's existing notebook so it continues as the
+   next Q-number in both the WORKING and KEY copies.
+
+```bash
+# 1. Bank the follow-up(s), linked to their parent (set "parent" in the JSON).
+python3 scripts/ds_python_interview_cli.py add --from-json ./followups.json
+# 2. Append them to the notebook the user is working in.
+python3 scripts/ds_python_interview_cli.py append-notebook \
+    --notebook ./interview_bank/Notebooks/drill_2026-01-15.ipynb \
+    --ids q_pandas_avg-order-value-scale,q_pandas_avg-order-value-sql
+```
+
+Tell the user to reload the notebook in Jupyter/VS Code to see the appended
+questions. A shared imports cell is auto-inserted if a follow-up needs `pandas`
+or `numpy` and the original notebook didn't.
 
 ## Output Format
 

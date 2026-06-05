@@ -289,6 +289,46 @@ class TestCli(unittest.TestCase):
         key_answer = next(c for c in key_nb["cells"] if _role(c) == "answer")
         self.assertIn("sum()", "".join(key_answer["source"]))
 
+    def test_append_notebook_followup(self) -> None:
+        self._add_all()
+        run_cli(["generate-notebook",
+                 *self._bank("--num", "3", "--date", "2026-02-01")])
+        working = self.bank_dir / "Notebooks" / "drill_2026-02-01.ipynb"
+        key = self.bank_dir / "Notebooks" / "drill_2026-02-01_KEY.ipynb"
+
+        # A follow-up question that links back to the Q1 (Two Sum) parent and
+        # needs pandas (the base notebook had no setup, hence no imports cell).
+        followup = dict(SETUP_QUESTION)
+        followup["title"] = "Sum Amounts Followup"
+        followup["parent"] = "q_dsa_two-sum"
+        fpath = Path(self._tmp.name) / "followup.json"
+        fpath.write_text(json.dumps([followup]), encoding="utf-8")
+        run_cli(["add", *self._bank("--from-json", str(fpath), "--date", "2026-02-01")])
+        fid = "q_pandas_sum-amounts-followup"
+
+        run_cli(["append-notebook",
+                 *self._bank("--notebook", str(working), "--ids", fid)])
+
+        nb = json.loads(working.read_text())
+        key_nb = json.loads(key.read_text())
+        # Numbering continued to Q4 in both notebooks.
+        self.assertEqual(notebook_builder.max_question_number(nb), 4)
+        self.assertEqual(notebook_builder.max_question_number(key_nb), 4)
+        # An imports cell was injected because the follow-up needs pandas.
+        self.assertIn("imports", [_role(c) for c in nb["cells"] if c["cell_type"] == "code"])
+        # Working Q4 answer cell is empty; KEY Q4 carries the solution.
+        md = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "markdown")
+        self.assertIn("## Q4", md)
+        key_code = "\n".join(
+            "".join(c["source"]) for c in key_nb["cells"] if c["cell_type"] == "code"
+        )
+        self.assertIn("sum()", key_code)
+
+        # Parent + notebook membership persisted in the index.
+        index = json.loads((self.bank_dir / "_index.json").read_text())
+        self.assertEqual(index["questions"][fid]["parent"], "q_dsa_two-sum")
+        self.assertIn("drill_2026-02-01.ipynb", index["questions"][fid]["notebooks"])
+
     def test_bank_dir_env_override(self) -> None:
         # Flag should win over env; env should win over default.
         old = os.environ.get(cli.ENV_BANK_DIR)

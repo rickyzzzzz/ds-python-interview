@@ -38,6 +38,9 @@ Questions span three categories:
    writes a model solution, and banks it.
 5. **Expand a leaked fragment** — share a partial/leaked question; Claude infers
    what's being probed and reconstructs a full easy → hard set.
+6. **Add follow-ups** — after solving, ask for deeper variants; Claude asks what
+   kind you want (scale, edge cases, SQL, harder, stats, Python internals) and
+   appends new questions onto your existing notebook (Q4, Q5, …).
 
 ## Install
 
