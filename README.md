@@ -47,7 +47,7 @@ Questions span three categories:
 Clone (or copy) this folder into your Claude Code skills directory:
 
 ```bash
-git clone https://github.com/<your-handle>/ds-python-interview.git \
+git clone https://github.com/rickyzzzzz/ds-python-interview.git \
   ~/.claude/skills/ds-python-interview
 ```
 
