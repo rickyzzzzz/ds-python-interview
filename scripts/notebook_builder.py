@@ -150,6 +150,8 @@ def _imports_for(questions: list[dict[str, Any]]) -> str:
         lines.append("import pandas as pd")
     if "np." in blob or "numpy" in blob:
         lines.append("import numpy as np")
+    if "sqlite3" in blob:
+        lines.append("import sqlite3")
     return "\n".join(lines)
 
 

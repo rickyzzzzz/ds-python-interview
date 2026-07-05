@@ -129,6 +129,44 @@ class TestCli(unittest.TestCase):
             self.assertEqual(entry["sr"]["reps"], 0)
             self.assertEqual(entry["sr"]["next_review_date"], "2026-01-01")
 
+    def test_sql_category_and_sqlite_imports(self) -> None:
+        sql_question = {
+            "category": "sql",
+            "difficulty": "medium",
+            "title": "Monthly Revenue by Segment",
+            "prompt": "Return total revenue per segment per month.",
+            "input_preview": "usage: account_id, usage_date, revenue_usd",
+            "expected": "segment, month, total_revenue",
+            "setup": (
+                "usage = pd.DataFrame({'account_id': ['A1'], 'revenue_usd': [10]})\n"
+                "conn = sqlite3.connect(':memory:')\n"
+                "usage.to_sql('usage', conn, index=False)\n"
+                "def q(sql):\n    return pd.read_sql_query(sql, conn)"
+            ),
+            "tags": ["sql", "groupby"],
+            "solution": 'q("""SELECT SUM(revenue_usd) FROM usage""")',
+            "complexity": "O(n) scan + hash aggregate",
+            "staff_signals": "COUNT(DISTINCT) vs COUNT(*).",
+        }
+        sql_json = Path(self._tmp.name) / "sql_question.json"
+        sql_json.write_text(json.dumps(sql_question), encoding="utf-8")
+        run_cli(["add", *self._bank("--from-json", str(sql_json),
+                                    "--date", "2026-01-01")])
+
+        note = self.bank_dir / "Bank" / "q_sql_monthly-revenue-by-segment.md"
+        self.assertTrue(note.exists())
+
+        run_cli(["generate-notebook",
+                 *self._bank("--num", "1", "--date", "2026-01-02",
+                             "--ids", "q_sql_monthly-revenue-by-segment")])
+        working = self.bank_dir / "Notebooks" / "drill_2026-01-02.ipynb"
+        nb = json.loads(working.read_text())
+        imports_src = "".join(
+            "".join(c["source"]) for c in nb["cells"] if _role(c) == "imports"
+        )
+        self.assertIn("import sqlite3", imports_src)
+        self.assertIn("import pandas as pd", imports_src)
+
     def test_generate_notebook(self) -> None:
         self._add_all()
         run_cli(["generate-notebook",

@@ -13,7 +13,7 @@ It splits the work cleanly:
   text or screenshots, producing model solutions, and reviewing your completed
   notebooks against an answer key.
 
-Questions span three categories:
+Questions span four categories:
 
 - **`dsa`** — pure-Python / standard library (collections, itertools, heapq,
   sliding window, two pointers, DP, clean idiomatic code).
@@ -21,10 +21,16 @@ Questions span three categories:
   functions, vectorization; numpy broadcasting; scipy.stats).
 - **`stats`** — implement an estimator or test (CUPED, delta method, IPTW,
   bootstrap, power/MDE) from scratch or with statsmodels/scipy.
+- **`sql`** — analytics SQL answered as real queries inside the notebook: the
+  setup cell loads small DataFrames into **in-memory SQLite** and defines a
+  `q()` helper, so joins, window functions, and retention/NDR-style metrics
+  run with zero extra dependencies. Supports **multi-step interview cases**
+  (one business scenario ramped easy → hard across Q1→QN, with a planted data
+  trap) — ideal for giving or receiving a mock SQL interview.
 
 > ML-implemented-from-scratch is intentionally out of scope.
 
-## What it does (five workflows)
+## What it does
 
 1. **Generate a notebook** — pick a category + difficulty; get a working
    notebook with sequential questions **Q1 → QN**. Each question shows the
@@ -41,6 +47,10 @@ Questions span three categories:
 6. **Add follow-ups** — after solving, ask for deeper variants; Claude asks what
    kind you want (scale, edge cases, SQL, harder, stats, Python internals) and
    appends new questions onto your existing notebook (Q4, Q5, …).
+7. **Build a multi-step SQL mock case** — ask for a SQL interview case and get
+   one scenario ramped over 2–4 escalating questions with a shared dataset, a
+   working notebook for the interviewee, and a `_KEY` whose staff-signal notes
+   double as the interviewer's probe list.
 
 ## Install
 

@@ -1,6 +1,6 @@
 ---
 name: ds-python-interview
-description: Practice and drill Python data-science interview questions in Jupyter notebooks with spaced repetition. A stdlib-only CLI handles the bookkeeping (question bank, notebook generation, scheduling); Claude does the reasoning (writing questions, parsing screenshots, reviewing completed notebooks). Use when the user wants to practice/drill Python DS interview questions, generate a practice notebook, review a completed notebook, add an interview question from text or a screenshot, expand a leaked/partial question into a full easy-to-hard set, add targeted follow-up questions to an existing drill notebook, check what's due to review, or see their progress/stats. Covers three categories — pure-Python DSA, pandas/numpy data manipulation, and statistics/experimentation (CUPED, delta method, IPTW, bootstrap, power/MDE). ML-from-scratch is intentionally out of scope.
+description: Practice and drill data-science interview questions in Jupyter notebooks with spaced repetition. A stdlib-only CLI handles the bookkeeping (question bank, notebook generation, scheduling); Claude does the reasoning (writing questions, parsing screenshots, reviewing completed notebooks). Use when the user wants to practice/drill Python or SQL DS interview questions, generate a practice notebook, build a multi-step SQL case for a mock interview, review a completed notebook, add an interview question from text or a screenshot, expand a leaked/partial question into a full easy-to-hard set, add targeted follow-up questions to an existing drill notebook, check what's due to review, or see their progress/stats. Covers four categories — pure-Python DSA, pandas/numpy data manipulation, statistics/experimentation (CUPED, delta method, IPTW, bootstrap, power/MDE), and analytics SQL (joins, window functions, retention/NDR metrics, run in-notebook via in-memory SQLite). ML-from-scratch is intentionally out of scope.
 ---
 
 # DS Python Interview Trainer
@@ -17,9 +17,11 @@ Jupyter notebooks and spaced repetition. It is a thin division of labor:
   parsing pasted text or screenshots, writing model solutions, and reviewing
   your completed notebooks against an answer key.
 
-Questions span three categories — `dsa` (pure Python / stdlib), `pandas` (data
-manipulation), and `stats` (estimators and experimentation methods). ML
-implemented from scratch is intentionally **out of scope**.
+Questions span four categories — `dsa` (pure Python / stdlib), `pandas` (data
+manipulation), `stats` (estimators and experimentation methods), and `sql`
+(analytics SQL, answered as real queries against an in-memory SQLite database
+built by the setup cell). ML implemented from scratch is intentionally
+**out of scope**.
 
 ## When to Use
 
@@ -42,6 +44,9 @@ Trigger this skill when the user wants to:
 - **pandas / numpy / scipy / statsmodels** are only needed *at solve time*
   inside the notebook kernel — the skill and CLI never import them. The user
   installs whatever the questions they practice require.
+- `sql` questions need nothing extra: they run on **`sqlite3` (stdlib) +
+  pandas** inside the notebook kernel. SQLite 3.25+ (2018) covers window
+  functions and CTEs.
 
 ## How It Works
 
@@ -111,7 +116,7 @@ Notes:
 - `due` and `grade` accept `--as-of YYYY-MM-DD` to evaluate the schedule for a
   specific date.
 
-## The Five Workflows
+## The Workflows
 
 ### 1. Generate a notebook
 
@@ -226,8 +231,39 @@ python3 scripts/ds_python_interview_cli.py append-notebook \
 ```
 
 Tell the user to reload the notebook in Jupyter/VS Code to see the appended
-questions. A shared imports cell is auto-inserted if a follow-up needs `pandas`
-or `numpy` and the original notebook didn't.
+questions. A shared imports cell is auto-inserted if a follow-up needs `pandas`,
+`numpy`, or `sqlite3` and the original notebook didn't.
+
+### 7. Build a multi-step SQL mock case
+
+When the user wants a **SQL interview case** (to drill themselves or to give a
+mock interview), build **one business scenario ramped over 2–4 escalating
+questions** — the shape real analytics SQL rounds take. Ground the surface area
+and the in-notebook SQLite pattern in the `sql` section of
+`references/question_taxonomy.md`, then:
+
+1. Design ONE small dataset (2 tables, ~10–30 rows) whose numbers tell a story,
+   and **plant a trap** (e.g. an entity that churns between periods) that the
+   hard step must handle. Every step shares this same `setup` — the setup
+   builds the DataFrames, loads them into in-memory SQLite, and defines the
+   `q()` helper so answers are pure SQL.
+2. **Verify before banking**: run each model solution against the setup data
+   with `sqlite3` + pandas and paste the actual results into `expected`.
+3. `add` the steps as separate questions — titled `... (Step k/N)`, difficulty
+   ramping easy → hard, chained via `parent`, tagged `sql` — then emit them in
+   order:
+
+```bash
+python3 scripts/ds_python_interview_cli.py add --from-json ./sql_case.json
+python3 scripts/ds_python_interview_cli.py generate-notebook \
+    --num 3 --ids q_sql_case-step-1,q_sql_case-step-2,q_sql_case-step-3 \
+    --title "SQL Case — <Scenario>"
+```
+
+For a mock interview, the interviewee gets the **working** notebook; the
+interviewer keeps the **`_KEY`**, whose staff-signal notes double as the probe
+list (tie semantics, the planted trap's wrong answer, metric-definition
+follow-ups).
 
 ## Output Format
 
@@ -253,7 +289,7 @@ interview_bank/
 
 ## Resources
 
-- `references/question_taxonomy.md` — what to generate: the three categories,
+- `references/question_taxonomy.md` — what to generate: the four categories,
   difficulty rubric, the library/skill surface each should exercise, and example
   questions. **Ground all generated questions in this file.**
 - `references/grading_rubric.md` — how to evaluate a submitted answer and map
@@ -277,6 +313,8 @@ interview_bank/
   `references/grading_rubric.md`; an honest grade is what makes spaced
   repetition work.
 - **ML-from-scratch is out of scope** — keep questions within `dsa`, `pandas`,
-  and `stats`.
+  `stats`, and `sql`.
+- **Verify SQL answers empirically.** For `sql` questions, execute the model
+  solution against the setup data before banking so `expected` is exact.
 - **Default to `./interview_bank`**; respect `--bank-dir` /
   `DS_PY_INTERVIEW_BANK_DIR` when provided.

@@ -33,7 +33,7 @@ SCHEMA_VERSION = "1.0"
 DEFAULT_BANK_DIRNAME = "./interview_bank"
 ENV_BANK_DIR = "DS_PY_INTERVIEW_BANK_DIR"
 
-CATEGORIES = {"dsa", "pandas", "stats"}
+CATEGORIES = {"dsa", "pandas", "stats", "sql"}
 DIFFICULTIES = {"easy", "medium", "hard"}
 GRADES = {"again", "hard", "good", "easy"}
 
