@@ -1,6 +1,6 @@
 ---
 name: ds-python-interview
-description: Practice and drill data-science interview questions in Jupyter notebooks with spaced repetition. A stdlib-only CLI handles the bookkeeping (question bank, notebook generation, scheduling); Claude does the reasoning (writing questions, parsing screenshots, reviewing completed notebooks). Use when the user wants to practice/drill Python or SQL DS interview questions, generate a practice notebook, build a multi-step SQL case for a mock interview, review a completed notebook, add an interview question from text or a screenshot, expand a leaked/partial question into a full easy-to-hard set, add targeted follow-up questions to an existing drill notebook, check what's due to review, or see their progress/stats. Covers four categories — pure-Python DSA, pandas/numpy data manipulation, statistics/experimentation (CUPED, delta method, IPTW, bootstrap, power/MDE), and analytics SQL (joins, window functions, retention/NDR metrics, run in-notebook via in-memory SQLite). ML-from-scratch is intentionally out of scope.
+description: Practice and drill data-science interview questions in Jupyter notebooks with spaced repetition. A stdlib-only CLI handles the bookkeeping (question bank, notebook generation, scheduling); Claude does the reasoning (writing questions, parsing screenshots, reviewing completed notebooks). Use when the user wants to practice/drill Python or SQL DS interview questions, generate a practice notebook, build a multi-step SQL case for a mock interview, review a completed notebook, add an interview question from text or a screenshot, expand a leaked/partial question into a full easy-to-hard set, add targeted follow-up questions to an existing drill notebook, check what's due to review, or see their progress/stats. Covers four categories — pure-Python DSA, pandas/numpy data manipulation, statistics/experimentation (CUPED, delta method, IPTW, bootstrap, power/MDE), and analytics SQL (joins, window functions, retention/NDR metrics, run in-notebook via DuckDB or in-memory SQLite). ML-from-scratch is intentionally out of scope.
 ---
 
 # DS Python Interview Trainer
@@ -45,8 +45,11 @@ Trigger this skill when the user wants to:
   inside the notebook kernel — the skill and CLI never import them. The user
   installs whatever the questions they practice require.
 - `sql` questions need nothing extra: they run on **`sqlite3` (stdlib) +
-  pandas** inside the notebook kernel. SQLite 3.25+ (2018) covers window
-  functions and CTEs.
+  pandas** inside the notebook kernel, with a `DATE_TRUNC` shim for Postgres
+  muscle memory. SQLite 3.25+ (2018) covers window functions and CTEs. If
+  **`duckdb`** is installed (`pip install duckdb`, optional), the setup cell
+  automatically uses it instead for a true Postgres-style dialect
+  (`DATE_TRUNC`, `QUALIFY`, ...).
 
 ## How It Works
 
@@ -245,10 +248,13 @@ and the in-notebook SQLite pattern in the `sql` section of
 1. Design ONE small dataset (2 tables, ~10–30 rows) whose numbers tell a story,
    and **plant a trap** (e.g. an entity that churns between periods) that the
    hard step must handle. Every step shares this same `setup` — the setup
-   builds the DataFrames, loads them into in-memory SQLite, and defines the
-   `q()` helper so answers are pure SQL.
+   builds the DataFrames, loads them into an in-memory database (DuckDB if
+   installed, else SQLite + `DATE_TRUNC` shim — use the engine block from the
+   taxonomy), and defines the `q()` helper so answers are pure SQL. Write model
+   solutions in **portable SQL** (see the taxonomy's `sql` section).
 2. **Verify before banking**: run each model solution against the setup data
-   with `sqlite3` + pandas and paste the actual results into `expected`.
+   and paste the actual results into `expected` — on both engines if `duckdb`
+   is importable, else on SQLite.
 3. `add` the steps as separate questions — titled `... (Step k/N)`, difficulty
    ramping easy → hard, chained via `parent`, tagged `sql` — then emit them in
    order:

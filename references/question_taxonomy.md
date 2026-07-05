@@ -67,24 +67,69 @@ surface, not ML modeling.
 
 ### `sql` — analytics SQL (runs inside the notebook)
 
-Real analytics-round SQL, answered as queries against an **in-memory SQLite
-database built in the setup cell** — no server, no new dependencies. The setup
-loads small DataFrames via `to_sql` and defines a `q()` helper so the answer is
-pure SQL but the result renders as a DataFrame:
+Real analytics-round SQL, answered as queries against an **in-memory database
+built in the setup cell** — no server, no required dependencies. The setup
+prefers **DuckDB** (Postgres-style dialect: `DATE_TRUNC`, `QUALIFY`, ...) when
+it's installed and falls back to **stdlib SQLite** with a `DATE_TRUNC` shim, so
+the same queries run either way. Use this engine block in every `sql` setup:
 
 ```python
-conn = sqlite3.connect(":memory:")
-accounts.to_sql("accounts", conn, index=False)
-events.to_sql("events", conn, index=False)
+# --- SQL engine: DuckDB (Postgres-style dialect) if installed, else SQLite ---
+try:
+    import duckdb
+    ENGINE = "duckdb"
+except ModuleNotFoundError:
+    ENGINE = "sqlite"
 
-def q(sql: str) -> pd.DataFrame:
-    """Run a SQL query and return the result as a DataFrame."""
-    return pd.read_sql_query(sql, conn)
+if ENGINE == "duckdb":
+    conn = duckdb.connect()
+    # register each table; parse date-like columns so DATE_TRUNC etc. work
+    conn.register("events", events.assign(ts=pd.to_datetime(events["ts"])))
+
+    def q(sql: str) -> pd.DataFrame:
+        """Run a SQL query (DuckDB: DATE_TRUNC, QUALIFY, Postgres-style)."""
+        return conn.execute(sql).df()
+else:
+    import sqlite3
+    from datetime import datetime
+
+    conn = sqlite3.connect(":memory:")
+    events.to_sql("events", conn, index=False)
+
+    def date_trunc(part, value):
+        """Postgres-style DATE_TRUNC shim so the same SQL runs on both engines."""
+        if value is None:
+            return None
+        dt = datetime.fromisoformat(str(value))
+        part = part.lower()
+        if part == "year":
+            dt = dt.replace(month=1, day=1)
+        elif part == "quarter":
+            dt = dt.replace(month=3 * ((dt.month - 1) // 3) + 1, day=1)
+        elif part == "month":
+            dt = dt.replace(day=1)
+        return dt.strftime("%Y-%m-%d")
+
+    conn.create_function("date_trunc", 2, date_trunc, deterministic=True)
+
+    def q(sql: str) -> pd.DataFrame:
+        """Run a SQL query (SQLite + DATE_TRUNC shim; window functions + CTEs OK)."""
+        return pd.read_sql_query(sql, conn)
+
+print(f"SQL engine: {ENGINE}")
 ```
 
-SQLite supports window functions and CTEs (3.25+, 2018), so the full analytics
-surface is drillable. Tell the interviewee the dialect and name the equivalents
-where they differ (`strftime('%Y-%m', ...)` ~ `DATE_TRUNC('month', ...)`).
+Both engines support window functions and CTEs (SQLite 3.25+, 2018), so the
+full analytics surface is drillable on either. **Write model solutions in
+portable SQL** so the KEY runs regardless of which engine the interviewee's
+kernel picks: use `date_trunc('month', col)` (works on both via the shim),
+half-open date-range predicates (`col >= '2026-06-01' AND col < '2026-07-01'`)
+instead of dialect-specific date formatting, and ordinal `GROUP BY 1, 2`.
+Avoid SQLite-only `strftime(format, col)` and DuckDB-only functions in
+solutions; mentioning them in staff signals as dialect trivia is encouraged.
+Minor engine differences are cosmetic (DuckDB returns aggregate sums as
+floats and `date_trunc` as timestamps; SQLite returns ints and `YYYY-MM-DD`
+strings) — note this in `expected` when it matters.
 
 **Surface area to exercise:**
 
@@ -236,12 +281,14 @@ cells and play with the data, every generated question must include:
 For `dsa` questions the `setup` typically defines plain Python inputs (a list,
 string, or dict); for `pandas` it builds the DataFrame(s); for `stats` it builds
 the sample arrays / frames; for `sql` it builds the DataFrames, loads them into
-an in-memory SQLite connection, and defines the `q()` helper (see the `sql`
-category above) — so the answer cell is just `q("""SELECT ...""")`. The dataset
-in `setup` should match `input_preview` and produce the `expected` output, so
-the example is internally consistent. For `sql`, **verify the solution queries
-against the setup data before banking** (run them via `sqlite3` + pandas) so
-`expected` is exact, not hand-computed.
+an in-memory database (DuckDB if installed, else SQLite — use the engine block
+from the `sql` category above), and defines the `q()` helper — so the answer
+cell is just `q("""SELECT ...""")`. The dataset in `setup` should match
+`input_preview` and produce the `expected` output, so the example is internally
+consistent. For `sql`, **verify the solution queries against the setup data
+before banking** — under SQLite always, and under DuckDB too when it's
+importable — so `expected` is exact, not hand-computed, and the KEY is proven
+portable.
 
 ---
 

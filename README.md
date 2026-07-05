@@ -22,9 +22,11 @@ Questions span four categories:
 - **`stats`** — implement an estimator or test (CUPED, delta method, IPTW,
   bootstrap, power/MDE) from scratch or with statsmodels/scipy.
 - **`sql`** — analytics SQL answered as real queries inside the notebook: the
-  setup cell loads small DataFrames into **in-memory SQLite** and defines a
-  `q()` helper, so joins, window functions, and retention/NDR-style metrics
-  run with zero extra dependencies. Supports **multi-step interview cases**
+  setup cell loads small DataFrames into an in-memory database — **DuckDB**
+  (Postgres-style dialect) if installed, else **stdlib SQLite with a
+  `DATE_TRUNC` shim** — and defines a `q()` helper, so joins, window
+  functions, and retention/NDR-style metrics run with zero required
+  dependencies. Supports **multi-step interview cases**
   (one business scenario ramped easy → hard across Q1→QN, with a planted data
   trap) — ideal for giving or receiving a mock SQL interview.
 
