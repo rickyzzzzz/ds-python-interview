@@ -153,8 +153,9 @@ strings) — note this in `expected` when it matters.
 **Multi-step interview cases.** Real SQL rounds usually run one business
 scenario through 2–4 escalating questions (warm-up aggregation → window
 functions → a retention/funnel metric with a data trap). Generate these as
-separate banked questions sharing the **same `setup`** (each question rebuilds
-the database, so every question stays independently runnable), chained via
+separate banked questions sharing the **same `setup`** (the notebook builder
+emits an identical consecutive setup only once, labeled as shared — and since
+setups are idempotent, re-running it resets the data at any point), chained via
 `parent` and titled `... (Step k/N)`, then emit them in order with
 `generate-notebook --ids`. Theme the scenario on a realistic business (a
 messaging app, a usage-billed API platform, a marketplace) and **plant a trap

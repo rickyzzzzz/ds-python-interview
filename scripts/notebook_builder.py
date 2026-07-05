@@ -180,13 +180,25 @@ def _imports_for(questions: list[dict[str, Any]]) -> str:
 
 
 def _question_cells(
-    index: int, question: dict[str, Any], include_solutions: bool
+    index: int,
+    question: dict[str, Any],
+    include_solutions: bool,
+    include_setup: bool = True,
+    setup_comment: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Build the cells for a single question: prompt, optional setup, answer."""
+    """Build the cells for a single question: prompt, optional setup, answer.
+
+    ``include_setup=False`` omits the setup cell (used when an identical setup
+    was already emitted for a preceding question); ``setup_comment`` prepends a
+    label line to the setup cell (used to mark a setup shared by several
+    questions).
+    """
     cells: list[dict[str, Any]] = [_markdown_cell(_question_markdown(index, question))]
 
     setup = (question.get("setup") or "").strip()
-    if setup:
+    if setup and include_setup:
+        if setup_comment:
+            setup = f"{setup_comment}\n{setup}"
         if not setup.endswith("\n"):
             setup = setup + "\n"
         cells.append(_code_cell(setup, role="setup", qnum=index))
@@ -232,8 +244,31 @@ def build_notebook(
     if imports:
         cells.append(_code_cell(imports + "\n", role="imports"))
 
+    # Emit a setup shared by consecutive questions only once (multi-step cases
+    # bank one dataset per step); differing setups still travel per question.
+    setups = [(q.get("setup") or "").strip() for q in questions]
     for i, question in enumerate(questions, start=1):
-        cells.extend(_question_cells(i, question, include_solutions))
+        idx = i - 1
+        include_setup = bool(setups[idx]) and (idx == 0 or setups[idx] != setups[idx - 1])
+        setup_comment = None
+        if include_setup:
+            end = idx
+            while end + 1 < len(setups) and setups[end + 1] == setups[idx]:
+                end += 1
+            if end > idx:
+                setup_comment = (
+                    f"# Setup shared by Q{i}–Q{end + 1} — run once;"
+                    " re-run any time to reset the data."
+                )
+        cells.extend(
+            _question_cells(
+                i,
+                question,
+                include_solutions,
+                include_setup=include_setup,
+                setup_comment=setup_comment,
+            )
+        )
 
     return {
         "cells": cells,

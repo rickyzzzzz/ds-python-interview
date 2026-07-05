@@ -173,6 +173,40 @@ class TestCli(unittest.TestCase):
         self.assertIn("`pandas`", intro_src)
         self.assertIn("duckdb", intro_src)
 
+    def test_shared_setup_emitted_once(self) -> None:
+        shared_setup = "data = pd.DataFrame({'x': [1, 2]})\ndata"
+        steps = []
+        for k in (1, 2, 3):
+            steps.append({
+                "category": "sql",
+                "difficulty": "medium",
+                "title": f"Case (Step {k}/3)",
+                "prompt": f"Step {k}.",
+                "setup": shared_setup,
+                "tags": ["sql"],
+                "solution": f"q('''SELECT {k}''')",
+                "complexity": "O(n)",
+                "staff_signals": "n/a",
+            })
+        case_json = Path(self._tmp.name) / "case.json"
+        case_json.write_text(json.dumps(steps), encoding="utf-8")
+        run_cli(["add", *self._bank("--from-json", str(case_json),
+                                    "--date", "2026-01-01")])
+
+        ids = ",".join(f"q_sql_case-step-{k}-3" for k in (1, 2, 3))
+        run_cli(["generate-notebook",
+                 *self._bank("--num", "3", "--date", "2026-01-03", "--ids", ids)])
+        nb = json.loads(
+            (self.bank_dir / "Notebooks" / "drill_2026-01-03.ipynb").read_text()
+        )
+        setup_cells = [c for c in nb["cells"] if _role(c) == "setup"]
+        self.assertEqual(len(setup_cells), 1)
+        setup_src = "".join(setup_cells[0]["source"])
+        self.assertIn("Setup shared by Q1–Q3", setup_src)
+        # All three questions and answer cells are still present.
+        answers = [c for c in nb["cells"] if _role(c) == "answer"]
+        self.assertEqual(len(answers), 3)
+
     def test_generate_notebook(self) -> None:
         self._add_all()
         run_cli(["generate-notebook",

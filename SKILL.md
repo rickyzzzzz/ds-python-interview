@@ -251,7 +251,9 @@ and the in-notebook SQLite pattern in the `sql` section of
    builds the DataFrames, loads them into an in-memory database (DuckDB if
    installed, else SQLite + `DATE_TRUNC` shim — use the engine block from the
    taxonomy), and defines the `q()` helper so answers are pure SQL. Write model
-   solutions in **portable SQL** (see the taxonomy's `sql` section).
+   solutions in **portable SQL** (see the taxonomy's `sql` section). The
+   notebook builder emits an identical consecutive setup only once (labeled
+   "shared by Q1–QN"), so give every step the same `setup` string verbatim.
 2. **Verify before banking**: run each model solution against the setup data
    and paste the actual results into `expected` — on both engines if `duckdb`
    is importable, else on SQLite.
