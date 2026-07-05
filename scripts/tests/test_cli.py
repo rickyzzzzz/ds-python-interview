@@ -167,6 +167,12 @@ class TestCli(unittest.TestCase):
         self.assertIn("import sqlite3", imports_src)
         self.assertIn("import pandas as pd", imports_src)
 
+        # The intro cell states what's needed to run the notebook.
+        intro_src = "".join(nb["cells"][0]["source"])
+        self.assertIn("**Requirements**", intro_src)
+        self.assertIn("`pandas`", intro_src)
+        self.assertIn("duckdb", intro_src)
+
     def test_generate_notebook(self) -> None:
         self._add_all()
         run_cli(["generate-notebook",

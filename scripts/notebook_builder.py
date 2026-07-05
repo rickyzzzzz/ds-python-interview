@@ -142,6 +142,30 @@ def _key_notes_markdown(question: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _requirements_for(questions: list[dict[str, Any]]) -> str:
+    """Derive a Requirements section for the intro cell from question code."""
+    blob = "\n".join(
+        (q.get("setup") or "") + "\n" + (q.get("solution") or "") for q in questions
+    )
+    lines = ["**Requirements** — to run this notebook you need:", ""]
+    lines.append("- Python 3.10+ with **Jupyter** (JupyterLab, `jupyter notebook`, or VS Code)")
+    if "pd." in blob or "pandas" in blob:
+        lines.append("- `pandas` — `pip install pandas`")
+    if "np." in blob or "numpy" in blob:
+        lines.append("- `numpy` — `pip install numpy`")
+    if "scipy" in blob:
+        lines.append("- `scipy` — `pip install scipy`")
+    if "statsmodels" in blob:
+        lines.append("- `statsmodels` — `pip install statsmodels`")
+    if "sqlite3" in blob or "duckdb" in blob:
+        lines.append(
+            "- SQL questions run on `sqlite3` (Python standard library — nothing to"
+            " install); *optional:* `pip install duckdb` to get a Postgres-style"
+            " dialect instead (the setup cell auto-detects it)"
+        )
+    return "\n".join(lines)
+
+
 def _imports_for(questions: list[dict[str, Any]]) -> str:
     """Derive a shared imports cell from what the setup code actually uses."""
     blob = "\n".join((q.get("setup") or "") for q in questions)
@@ -199,6 +223,9 @@ def build_notebook(
     extra = (intro_md or "").strip()
     if extra:
         intro_text = f"{intro_text}\n\n{extra}"
+    requirements = _requirements_for(questions)
+    if requirements:
+        intro_text = f"{intro_text}\n\n{requirements}"
     cells.append(_markdown_cell(intro_text))
 
     imports = _imports_for(questions)
