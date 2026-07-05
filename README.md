@@ -35,10 +35,13 @@ Questions span four categories:
 ## What it does
 
 1. **Generate a notebook** — pick a category + difficulty; get a working
-   notebook with sequential questions **Q1 → QN**. Each question shows the
-   **input data** and **expected output**, ships a **runnable setup cell** that
-   builds the dataset (so you can run cells and experiment), and gives you an
-   empty answer cell. A separate `_KEY` notebook holds the model solutions.
+   notebook with sequential questions **Q1 → QN**. The intro cell lists the
+   **packages required to run the notebook** (auto-derived from the questions'
+   code). Each question shows the **input data** and **expected output**,
+   ships a **runnable setup cell** that builds the dataset (so you can run
+   cells and experiment; consecutive questions sharing an identical setup get
+   one labeled shared cell instead of copies), and gives you an empty answer
+   cell. A separate `_KEY` notebook holds the model solutions.
 2. **Solve** — work through the questions in JupyterLab / VS Code.
 3. **Review** — Claude reads your completed notebook, grades each answer against
    the key, writes a feedback report, and updates the schedule.
@@ -50,9 +53,11 @@ Questions span four categories:
    kind you want (scale, edge cases, SQL, harder, stats, Python internals) and
    appends new questions onto your existing notebook (Q4, Q5, …).
 7. **Build a multi-step SQL mock case** — ask for a SQL interview case and get
-   one scenario ramped over 2–4 escalating questions with a shared dataset, a
-   working notebook for the interviewee, and a `_KEY` whose staff-signal notes
-   double as the interviewer's probe list.
+   one scenario ramped over 2–4 escalating questions with a shared dataset
+   (emitted as a single shared setup cell), a working notebook for the
+   interviewee, and a `_KEY` whose staff-signal notes double as the
+   interviewer's probe list. Model solutions are written in portable SQL and
+   verified against the data on both engines before banking.
 
 ## Install
 
@@ -73,7 +78,11 @@ notebook", etc.
 - **Jupyter / JupyterLab** or **VS Code** to *solve* the notebooks.
 - `pandas` / `numpy` / `scipy` / `statsmodels` only at *solve time*, inside the
   notebook kernel, for whatever questions you practice. The skill itself never
-  imports them.
+  imports them. (Each generated notebook lists its own requirements in the
+  intro cell.)
+- `sql` questions run on stdlib `sqlite3` (with a `DATE_TRUNC` shim) — or on
+  **DuckDB** for a Postgres-style dialect if you `pip install duckdb`; the
+  setup cell auto-detects it.
 
 ## Quickstart (CLI)
 
