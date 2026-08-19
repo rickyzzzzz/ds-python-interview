@@ -251,6 +251,43 @@ class TestCli(unittest.TestCase):
         self.assertIn("groupby", all_key_code)
         self.assertIn("posterior", all_key_code)
 
+    def test_answer_cell_restates_the_question(self) -> None:
+        """The answer cell opens with a comment restating the ask.
+
+        Keeps the question on screen while typing, instead of forcing a scroll
+        back up to the markdown prompt.
+        """
+        question = {
+            "title": "Sessionize Calls",
+            "prompt": (
+                "**Scenario.** Boilerplate that should not be repeated in the "
+                "comment.\n\n---\n\nGroup `api_calls` into **usage sessions**, "
+                "splitting on a gap of more than 30 minutes.\n\n"
+                "Return one row per session with:\n\n- `account_id`\n- `n_calls`"
+            ),
+        }
+        header = notebook_builder._answer_header(2, question)
+
+        self.assertTrue(header.startswith("# ── Q2 · Sessionize Calls"))
+        self.assertIn("Group api_calls into usage sessions", header)
+        # Markdown emphasis is flattened, and the scenario preamble is dropped.
+        self.assertNotIn("**", header)
+        self.assertNotIn("Boilerplate", header)
+        # Every line is a comment, so an untouched answer cell still parses as
+        # unattempted and the cell runs clean if executed.
+        for line in header.splitlines():
+            self.assertTrue(line.startswith("#") or not line.strip())
+        compile(header, "<answer-header>", "exec")
+
+    def test_answer_header_drops_a_dangling_list_lead_in(self) -> None:
+        """A lead-in whose list was truncated away is dropped with it."""
+        question = {
+            "title": "Long One",
+            "prompt": "Do the thing.\n\n" + "Filler sentence. " * 40 + "\n\nReturn:\n\n- a\n- b",
+        }
+        header = notebook_builder._answer_header(1, question)
+        self.assertNotIn("Return:", header)
+
     def test_parse_notebook_with_injected_answers(self) -> None:
         self._add_all()
         run_cli(["generate-notebook",

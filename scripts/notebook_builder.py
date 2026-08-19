@@ -10,7 +10,8 @@ Each generated question contributes up to three cells:
 2. a runnable **setup** code cell that constructs the dataset for the question so
    the user can execute it and experiment with real data, and
 3. an **answer** code cell (empty in the WORKING notebook, the model solution in
-   the KEY notebook).
+   the KEY notebook), which opens with a short comment restating the ask so the
+   question stays on screen while you type.
 
 Code cells are tagged in their metadata (``metadata.ds_interview.role``) so a
 completed notebook can be parsed back to the user's answers unambiguously, even
@@ -132,6 +133,129 @@ def _question_markdown(index: int, question: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+_ANSWER_COMMENT_WIDTH = 78
+_MAX_TASK_LINES = 6
+
+
+def _strip_markdown(text: str) -> str:
+    """Flatten inline markdown so a prompt reads cleanly inside a `#` comment."""
+    text = re.sub(r"```.*?```", "", text, flags=re.S)  # fenced code blocks
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)  # bold
+    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"\1", text)  # italics
+    text = text.replace("`", "")
+    return text
+
+
+def _task_summary(question: dict[str, Any]) -> str:
+    """Pull the actual *ask* out of a prompt, dropping any scenario preamble.
+
+    Prompts often open with shared scenario/setup boilerplate and then separate
+    the real task with a `---` rule. When that rule is present the task is what
+    follows the last one; otherwise the whole prompt is the task. Only the first
+    paragraph is kept — this is a reminder of what to do, not a second copy of
+    the prompt, which stays in the markdown cell above.
+    """
+    prompt = (question.get("prompt") or "").strip()
+    if not prompt:
+        return ""
+
+    tail = re.split(r"\n\s*-{3,}\s*\n", prompt)[-1]
+    body = _strip_markdown(tail).strip()
+
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+    if not paragraphs:
+        return ""
+
+    # Keep the leading paragraph, plus following ones only while there is room —
+    # bulleted output specs are usually the second block and are worth having.
+    kept: list[str] = []
+    lines_used = 0
+    for para in paragraphs:
+        wrapped = _wrap_plain(para, _ANSWER_COMMENT_WIDTH - 2)
+        # A follow-up paragraph is only worth keeping if it fits whole — half a
+        # bullet list is more confusing than none.
+        if kept and lines_used + len(wrapped) + 1 > _MAX_TASK_LINES:
+            break
+        kept.append(para)
+        lines_used += len(wrapped) + 1
+
+    # Never end on a lead-in whose list got dropped — a dangling "with:" reads
+    # like the comment was truncated.
+    if len(kept) < len(paragraphs):
+        while kept and kept[-1].rstrip().endswith(":"):
+            kept.pop()
+    return "\n\n".join(kept)
+
+
+def _wrap_plain(text: str, width: int) -> list[str]:
+    """Word-wrap to ``width``, re-flowing prose but keeping list items separate.
+
+    Hard line breaks inside a prose paragraph are an artifact of how the prompt
+    was typed, so they are joined and re-wrapped; bullet lines are meaningful and
+    each wraps on its own with a hanging indent.
+    """
+    chunks: list[tuple[str, str]] = []  # (text, hanging indent)
+    prose: list[str] = []
+
+    def flush() -> None:
+        if prose:
+            chunks.append((" ".join(prose), ""))
+            prose.clear()
+
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            flush()
+            chunks.append(("", ""))
+        elif re.match(r"^[-*•]\s", stripped):
+            flush()
+            chunks.append((stripped, "  "))
+        else:
+            prose.append(stripped)
+    flush()
+
+    out: list[str] = []
+    for chunk, indent in chunks:
+        if not chunk:
+            out.append("")
+            continue
+        line = ""
+        for word in chunk.split():
+            candidate = f"{line} {word}" if line else word
+            if line and len(candidate) > width:
+                out.append(line)
+                line = f"{indent}{word}"
+            else:
+                line = candidate
+        if line:
+            out.append(line)
+    while out and not out[-1]:
+        out.pop()
+    return out
+
+
+def _answer_header(index: int, question: dict[str, Any]) -> str:
+    """A short comment block restating the ask, for the top of an answer cell.
+
+    Keeps the question on screen while typing, so the answer cell is readable on
+    its own without scrolling back up to the markdown prompt.
+    """
+    title = question.get("title", "").strip()
+    heading = f"# ── Q{index} · {title} "
+    if len(heading) < _ANSWER_COMMENT_WIDTH:
+        heading += "─" * (_ANSWER_COMMENT_WIDTH - len(heading))
+    lines = [heading]
+
+    task = _task_summary(question)
+    if task:
+        for line in _wrap_plain(task, _ANSWER_COMMENT_WIDTH - 2):
+            lines.append(f"# {line}".rstrip())
+        lines.append("# " + "─" * (_ANSWER_COMMENT_WIDTH - 2))
+        lines.append("# Full prompt, input preview and expected output: the cell above.")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _key_notes_markdown(question: dict[str, Any]) -> str:
     complexity = (question.get("complexity") or "").strip()
     staff_signals = (question.get("staff_signals") or "").strip()
@@ -203,14 +327,18 @@ def _question_cells(
             setup = setup + "\n"
         cells.append(_code_cell(setup, role="setup", qnum=index))
 
+    header = _answer_header(index, question)
+
     if include_solutions:
         solution = question.get("solution") or ""
         if not solution.endswith("\n"):
             solution = solution + "\n"
-        cells.append(_code_cell(solution, role="answer", qnum=index))
+        cells.append(_code_cell(f"{header}\n{solution}", role="answer", qnum=index))
         cells.append(_markdown_cell(_key_notes_markdown(question)))
     else:
-        cells.append(_code_cell(f"# Your answer for Q{index}\n", role="answer", qnum=index))
+        cells.append(
+            _code_cell(f"{header}\n# Your answer for Q{index}\n", role="answer", qnum=index)
+        )
 
     return cells
 

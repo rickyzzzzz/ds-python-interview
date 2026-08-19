@@ -140,8 +140,10 @@ python3 scripts/ds_python_interview_cli.py generate-notebook \
 This emits a **working** notebook with sequential questions **Q1 → QN** — each
 question is a prompt (with an **Input data** preview and the **Expected
 output**), a **runnable setup cell** that builds the dataset so the user can
-execute it and experiment, then an empty answer cell — plus a separate **`_KEY`**
-notebook containing model solutions plus complexity / staff-signal notes:
+execute it and experiment, then an answer cell that opens with a short comment
+restating the ask (so the question stays on screen while you type) — plus a
+separate **`_KEY`** notebook containing model solutions plus complexity /
+staff-signal notes:
 
 ```
 ./interview_bank/Notebooks/drill_2026-01-15.ipynb       # working (no solutions)
@@ -288,7 +290,8 @@ interview_bank/
 - **Working notebook** — intro cell, a shared imports cell, then for each
   question: a markdown prompt (`## Q{n} — Title`, **Input data**, **Expected
   output**, constraints, tags), a **runnable setup cell** that builds (and
-  displays) the question's dataset, and an empty answer cell. No solutions.
+  displays) the question's dataset, and an answer cell whose header comment
+  restates the ask. No solutions.
 - **KEY notebook** — same prompts, but each answer cell holds the model
   solution, followed by a notes cell with **complexity** and **staff signals**.
 - **Review report** — `Reviews/review_<date>.md`, one section per question:
