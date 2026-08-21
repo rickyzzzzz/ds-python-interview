@@ -319,6 +319,12 @@ interview_bank/
   that builds (and displays) its dataset, plus an `input_preview` and `expected`
   output in the prompt — the user should be able to run cells and experiment
   without writing boilerplate.
+- **Give `input_preview` / `expected` as markdown tables.** They land in a
+  *markdown* cell, where a bare `str(df)` renders as a run-on paragraph with the
+  column alignment collapsed. Emit `df.to_markdown()` so it renders as a real
+  table (`floatfmt=".2f"` to keep the decimals, `reset_index()` so a named or
+  Multi- index shows as leading columns). Non-table text is fenced
+  automatically, which preserves alignment but still reads as plain text.
 - **Always produce a separate KEY** so review is grounded in a reference answer.
 - **Grade honestly.** Map review outcomes to `{again, hard, good, easy}` per
   `references/grading_rubric.md`; an honest grade is what makes spaced

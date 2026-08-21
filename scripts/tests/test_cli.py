@@ -444,6 +444,61 @@ class TestCli(unittest.TestCase):
         self.assertEqual(index["questions"][fid]["parent"], "q_dsa_two-sum")
         self.assertIn("drill_2026-02-01.ipynb", index["questions"][fid]["notebooks"])
 
+    def test_tabular_blocks_render_as_tables_not_prose(self) -> None:
+        """Input data / Expected output must survive markdown rendering.
+
+        A fixed-width ``repr(df)`` pasted bare into a markdown cell renders as
+        one run-on paragraph (markdown eats the newlines and collapses the space
+        runs that carry the column alignment), so it must be fenced. A markdown
+        table is already renderable and must pass through untouched.
+        """
+        df_repr = ("   order_id country  amount\n"
+                   "0         1      US   120.0\n"
+                   "1         2      CA    80.0")
+        md_table = ("| order_id | country | amount |\n"
+                    "|---:|:---|---:|\n"
+                    "| 1 | US | 120.0 |")
+
+        fenced = notebook_builder.render_data_block(df_repr)
+        self.assertTrue(fenced.startswith("```"))
+        self.assertTrue(fenced.rstrip().endswith("```"))
+        self.assertIn("0         1      US   120.0", fenced)
+
+        self.assertEqual(notebook_builder.render_data_block(md_table), md_table)
+        self.assertEqual(notebook_builder.render_data_block(""), "")
+
+        question = {
+            "category": "pandas", "difficulty": "easy", "title": "Repr block",
+            "prompt": "Sum amount by country.",
+            "input_preview": df_repr, "expected": md_table,
+            "tags": ["pandas"], "solution": "df.groupby('country')['amount'].sum()",
+        }
+        json_path = Path(self._tmp.name) / "tabular.json"
+        json_path.write_text(json.dumps([question]), encoding="utf-8")
+        run_cli(["add", *self._bank("--from-json", str(json_path))])
+
+        note = next((self.bank_dir / "Bank").glob("q_pandas_repr-block*.md"))
+        note_text = note.read_text(encoding="utf-8")
+        self.assertIn("## Input data\n\n```text\n", note_text)
+        self.assertIn("## Expected output\n\n| order_id |", note_text)
+
+        # The stored value stays raw: re-reading must not keep the fence, or a
+        # round trip would nest another one on every render.
+        recovered = cli.read_bank_note(note)
+        self.assertEqual(recovered["input_preview"], df_repr)
+        self.assertEqual(recovered["expected"], md_table)
+
+        run_cli(["generate-notebook", *self._bank("--num", "1", "--category", "pandas",
+                                                  "--date", "2026-02-01")])
+        nb = json.loads((self.bank_dir / "Notebooks" / "drill_2026-02-01.ipynb")
+                        .read_text(encoding="utf-8"))
+        prompt_md = next("".join(c["source"]) for c in nb["cells"]
+                         if c["cell_type"] == "markdown"
+                         and "**Input data**" in "".join(c["source"]))
+        self.assertIn("**Input data**\n\n```text\n", prompt_md)
+        self.assertNotIn("```text\n```text", prompt_md)
+        self.assertIn("**Expected output**\n\n| order_id |", prompt_md)
+
     def test_bank_dir_env_override(self) -> None:
         # Flag should win over env; env should win over default.
         old = os.environ.get(cli.ENV_BANK_DIR)

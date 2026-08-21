@@ -205,14 +205,15 @@ def render_bank_note(question: dict[str, Any]) -> str:
         body.append(prompt)
         body.append("")
 
-    input_preview = (question.get("input_preview") or "").strip()
+    input_preview = notebook_builder.render_data_block(
+        question.get("input_preview") or "")
     if input_preview:
         body.append("## Input data")
         body.append("")
         body.append(input_preview)
         body.append("")
 
-    expected = (question.get("expected") or "").strip()
+    expected = notebook_builder.render_data_block(question.get("expected") or "")
     if expected:
         body.append("## Expected output")
         body.append("")
@@ -317,9 +318,22 @@ def read_bank_note(path: Path) -> dict[str, Any]:
         kept = [ln for ln in sections.get(name, []) if not ln.strip().startswith("```")]
         return "\n".join(kept).strip()
 
+    def _section_data(name: str) -> str:
+        """Section text with an *enclosing* code fence stripped.
+
+        ``render_bank_note`` fences non-table data blocks so the note renders
+        correctly; the stored value must stay raw or each round trip would nest
+        another fence. Only a fence wrapping the whole section is removed.
+        """
+        lines = notebook_builder._trim_blank_edges(sections.get(name, []))
+        if len(lines) >= 2 and lines[0].strip().startswith("```") \
+                and lines[-1].strip() == "```":
+            lines = notebook_builder._trim_blank_edges(lines[1:-1])
+        return "\n".join(lines)
+
     result["prompt"] = _section_text("prompt")
-    result["input_preview"] = _section_text("input data")
-    result["expected"] = _section_text("expected output")
+    result["input_preview"] = _section_data("input data")
+    result["expected"] = _section_data("expected output")
     result["setup"] = _section_code("setup")
     result["examples"] = _section_text("examples")
     result["constraints"] = _section_text("constraints")

@@ -37,7 +37,10 @@ Questions span four categories:
 1. **Generate a notebook** — pick a category + difficulty; get a working
    notebook with sequential questions **Q1 → QN**. The intro cell lists the
    **packages required to run the notebook** (auto-derived from the questions'
-   code). Each question shows the **input data** and **expected output**,
+   code). Each question shows the **input data** and **expected output** as a
+   rendered table (a markdown table passes through as-is; anything else — a
+   fixed-width `repr(df)`, say — is fenced so its column alignment survives
+   markdown),
    ships a **runnable setup cell** that builds the dataset (so you can run
    cells and experiment; consecutive questions sharing an identical setup get
    one labeled shared cell instead of copies), and gives you an empty answer

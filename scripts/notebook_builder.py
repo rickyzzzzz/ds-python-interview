@@ -78,6 +78,48 @@ def _code_cell(text: str, role: str | None = None, qnum: int | None = None) -> d
     }
 
 
+def _trim_blank_edges(lines: list[str]) -> list[str]:
+    """Drop blank lines at both ends, leaving interior lines untouched.
+
+    Deliberately not ``str.strip()``: the leading whitespace of the *first*
+    line is significant in a ``repr(df)`` — it is the padding that aligns the
+    index column under the header.
+    """
+    out = [ln.rstrip() for ln in lines]
+    while out and not out[0].strip():
+        out.pop(0)
+    while out and not out[-1].strip():
+        out.pop()
+    return out
+
+
+_MD_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
+
+
+def render_data_block(text: str) -> str:
+    """Render an *Input data* / *Expected output* block for a markdown cell.
+
+    These fields hold tabular data, and markdown is hostile to it: single
+    newlines are not line breaks and runs of spaces collapse, so a fixed-width
+    ``repr(df)`` renders as one run-on paragraph with the column alignment
+    destroyed. So:
+
+    * a **markdown table** (``| a | b |`` rows) is emitted as-is, and renders as
+      a real table — this is what ``df.to_markdown()`` produces;
+    * anything else is wrapped in a code fence, which preserves the alignment as
+      monospace text.
+
+    Fencing is a *render-time* decision — the stored field always holds the raw
+    text, so this stays idempotent across a bank-note round trip.
+    """
+    lines = _trim_blank_edges(text.splitlines())
+    if not lines:
+        return ""
+    if len(lines) >= 2 and all(_MD_TABLE_ROW.match(ln) for ln in lines[:2]):
+        return "\n".join(lines)
+    return "\n".join(["```text", *lines, "```"])
+
+
 def _question_markdown(index: int, question: dict[str, Any]) -> str:
     """Render the prompt markdown for a single question."""
     title = question.get("title", "").strip()
@@ -88,14 +130,14 @@ def _question_markdown(index: int, question: dict[str, Any]) -> str:
         parts.append(prompt)
         parts.append("")
 
-    input_preview = (question.get("input_preview") or "").strip()
+    input_preview = render_data_block(question.get("input_preview") or "")
     if input_preview:
         parts.append("**Input data**")
         parts.append("")
         parts.append(input_preview)
         parts.append("")
 
-    expected = (question.get("expected") or "").strip()
+    expected = render_data_block(question.get("expected") or "")
     if expected:
         parts.append("**Expected output**")
         parts.append("")
