@@ -283,6 +283,11 @@ def read_bank_note(path: Path) -> dict[str, Any]:
     solution_lines: list[str] = []
     in_solution = False
     in_code = False
+    # Which metadata field the solution callout is currently accumulating. The
+    # rendered callout is a single block whose `**Complexity:**` / `**Staff
+    # signals:**` fields run to the END of the block (the staff-signal prose is
+    # multi-line), so we must keep collecting until the next field or the end.
+    meta_field: str | None = None
 
     for line in lines:
         if line.startswith("> [!solution]"):
@@ -298,10 +303,16 @@ def read_bank_note(path: Path) -> dict[str, Any]:
                 continue
             if in_code:
                 solution_lines.append(stripped)
-            elif stripped.startswith("**Complexity:**"):
+                continue
+            if stripped.startswith("**Complexity:**"):
+                meta_field = "complexity"
                 result["complexity"] = stripped.split("**Complexity:**", 1)[1].strip()
             elif stripped.startswith("**Staff signals:**"):
+                meta_field = "staff_signals"
                 result["staff_signals"] = stripped.split("**Staff signals:**", 1)[1].strip()
+            elif meta_field and stripped.strip():
+                # Continuation line of the current field (staff signals are prose).
+                result[meta_field] = f"{result[meta_field]}\n{stripped}"
             continue
 
         if line.startswith("## "):

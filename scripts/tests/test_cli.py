@@ -366,7 +366,6 @@ class TestCli(unittest.TestCase):
                  *self._bank("--num", "1", "--date", "2026-01-03")])
         working = self.bank_dir / "Notebooks" / "drill_2026-01-03.ipynb"
         nb = json.loads(working.read_text())
-
         roles = [_role(c) for c in nb["cells"] if c["cell_type"] == "code"]
         self.assertIn("imports", roles)   # pandas import derived from setup
         self.assertIn("setup", roles)
@@ -498,6 +497,28 @@ class TestCli(unittest.TestCase):
         self.assertIn("**Input data**\n\n```text\n", prompt_md)
         self.assertNotIn("```text\n```text", prompt_md)
         self.assertIn("**Expected output**\n\n| order_id |", prompt_md)
+
+    def test_bank_note_roundtrips_multiline_staff_signals(self) -> None:
+        # Regression: the rendered callout puts complexity and staff signals in
+        # one block, with the staff-signal prose spanning many lines. The parser
+        # used to keep only the first line, silently truncating vet notes on any
+        # regenerate-from-bank round trip.
+        q = dict(SETUP_QUESTION)
+        q["staff_signals"] = (
+            "First line of the vet note.\n"
+            "Second line continues the argument.\n"
+            "\n"
+            "Probe: *\"what would change your mind?\"* -> a holdout."
+        )
+        qpath = Path(self._tmp.name) / "staffq.json"
+        qpath.write_text(json.dumps([q]), encoding="utf-8")
+        run_cli(["add", *self._bank("--from-json", str(qpath), "--date", "2026-01-01")])
+
+        note = next((self.bank_dir / "Bank").glob("*.md"))
+        content = cli.read_bank_note(note)
+        self.assertIn("First line of the vet note.", content["staff_signals"])
+        self.assertIn("Second line continues the argument.", content["staff_signals"])
+        self.assertIn("what would change your mind", content["staff_signals"])
 
     def test_bank_dir_env_override(self) -> None:
         # Flag should win over env; env should win over default.
